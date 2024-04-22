@@ -90,7 +90,8 @@ void usage(void)
 		"rtl_test, a benchmark tool for RTL2832 based DVB-T receivers\n\n"
 		"Usage:\n"
 		"\t[-s samplerate (default: 2048000 Hz)]\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-t enable Elonics E4000 tuner benchmark]\n"
 #ifndef _WIN32
 		"\t[-p[seconds] enable PPM error measurement (default: 10 seconds)]\n"
@@ -312,15 +313,20 @@ int main(int argc, char **argv)
 	uint8_t *buffer;
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	uint32_t out_block_size = DEFAULT_BUF_LENGTH;
 	int count;
 	int gains[100];
 
-	while ((opt = getopt(argc, argv, "d:s:b:tp::Sh")) != -1) {
+	while ((opt = getopt(argc, argv, "d:N:D:s:b:tp::Sh")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 's':
 			samp_rate = (uint32_t)atof(optarg);
@@ -359,7 +365,7 @@ int main(int argc, char **argv)
 
 	buffer = malloc(out_block_size * sizeof(uint8_t));
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -367,7 +373,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	if (r < 0) {
 		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
 		exit(1);

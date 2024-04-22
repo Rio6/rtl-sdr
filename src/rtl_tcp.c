@@ -102,7 +102,8 @@ void usage(void)
 	printf("\t[-s samplerate in Hz (default: %d Hz)]\n", DEFAULT_SAMPLE_RATE_HZ);
 	printf("\t[-b number of buffers (default: 15, set by library)]\n");
 	printf("\t[-n max number of linked list buffers to keep (default: %d)]\n", DEFAULT_MAX_NUM_BUFFERS);
-	printf("\t[-d device index (default: 0)]\n");
+	printf("\t[-d device_index (default: 1)]\n");
+	printf("\t[-N file_desc use file descriptor instead of libusb index\n");
 	printf("\t[-P ppm_error (default: 0)]\n");
 	printf("\t[-T enable bias-T on GPIO PIN 0 (works for rtl-sdr.com v3 dongles)]\n");
 	printf("\t[-D enable direct sampling (default: off)]\n");
@@ -395,6 +396,7 @@ int main(int argc, char **argv)
 	uint32_t buf_num = 0;
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	int gain = 0;
 	int ppm_error = 0;
 	int direct_sampling = 0;
@@ -415,11 +417,15 @@ int main(int argc, char **argv)
 	struct sigaction sigact, sigign;
 #endif
 
-	while ((opt = getopt(argc, argv, "a:p:f:g:s:b:n:d:P:TD")) != -1) {
+	while ((opt = getopt(argc, argv, "a:p:f:g:s:b:n:d:N:P:TD")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'f':
 			frequency = (uint32_t)atofs(optarg);
@@ -460,7 +466,7 @@ int main(int argc, char **argv)
 	if (argc < optind)
 		usage();
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -468,7 +474,12 @@ int main(int argc, char **argv)
 	    exit(1);
 	}
 
-	rtlsdr_open(&dev, (uint32_t)dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	if (NULL == dev) {
 	fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
 		exit(1);

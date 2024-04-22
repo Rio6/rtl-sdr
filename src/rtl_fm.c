@@ -192,7 +192,8 @@ void usage(void)
 		"\t    wbfm == -M fm -s 170k -o 4 -A fast -r 32k -l 0 -E deemp\n"
 		"\t    raw mode outputs 2x16 bit IQ pairs\n"
 		"\t[-s sample_rate (default: 24k)]\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-T enable bias-T on GPIO PIN 0 (works for rtl-sdr.com v3 dongles)]\n"
 		"\t[-g tuner_gain (default: automatic)]\n"
 		"\t[-l squelch_level (default: 0/off)]\n"
@@ -1057,6 +1058,7 @@ int main(int argc, char **argv)
 #endif
 	int r, opt;
 	int dev_given = 0;
+	int fd_given = 0;
 	int custom_ppm = 0;
     int enable_biastee = 0;
 	dongle_init(&dongle);
@@ -1064,11 +1066,15 @@ int main(int argc, char **argv)
 	output_init(&output);
 	controller_init(&controller);
 
-	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:p:E:F:A:M:hT")) != -1) {
+	while ((opt = getopt(argc, argv, "d:N:f:g:s:b:l:o:t:r:p:E:F:A:M:hT")) != -1) {
 		switch (opt) {
 		case 'd':
 			dongle.dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dongle.dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'f':
 			if (controller.freq_len >= FREQUENCIES_LIMIT) {
@@ -1190,7 +1196,7 @@ int main(int argc, char **argv)
 
 	ACTUAL_BUF_LENGTH = lcm_post[demod.post_downsample] * DEFAULT_BUF_LENGTH;
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dongle.dev_index = verbose_device_search("0");
 	}
 
@@ -1198,7 +1204,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dongle.dev, (uint32_t)dongle.dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dongle.dev, dongle.dev_index);
+	} else {
+		r = rtlsdr_open(&dongle.dev, (uint32_t)dongle.dev_index);
+	}
+
 	if (r < 0) {
 		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dongle.dev_index);
 		exit(1);

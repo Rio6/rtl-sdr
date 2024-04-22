@@ -49,7 +49,8 @@ void usage(void)
 		"rtl_sdr, an I/Q recorder for RTL2832 based DVB-T receivers\n\n"
 		"Usage:\t -f frequency_to_tune_to [Hz]\n"
 		"\t[-s samplerate (default: 2048000 Hz)]\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-g gain (default: 0 for auto)]\n"
 		"\t[-p ppm_error (default: 0)]\n"
 		"\t[-b output_block_size (default: 16 * 16384)]\n"
@@ -120,6 +121,7 @@ int main(int argc, char **argv)
 	uint8_t *buffer;
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	uint32_t frequency = 100000000;
 	uint32_t samp_rate = DEFAULT_SAMPLE_RATE;
 	uint32_t out_block_size = DEFAULT_BUF_LENGTH;
@@ -129,6 +131,10 @@ int main(int argc, char **argv)
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'f':
 			frequency = (uint32_t)atofs(optarg);
@@ -179,7 +185,7 @@ int main(int argc, char **argv)
 
 	buffer = malloc(out_block_size * sizeof(uint8_t));
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -187,7 +193,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	if (r < 0) {
 		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
 		exit(1);

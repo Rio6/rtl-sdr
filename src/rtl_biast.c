@@ -41,7 +41,8 @@ void usage(void)
 		"bias tee: rtl_biast -d 0 -b 1\n"
 		"Any GPIO: rtl_biast -d 0 -g 1 -b 1\n\n"
 		"Usage:\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-b bias_on (default: 0)]\n"
 		"\t[-g GPIO select (default: 0)]\n");
 	exit(1);
@@ -52,15 +53,20 @@ int main(int argc, char **argv)
 	int i, r, opt;
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	uint32_t bias_on = 0;
 	uint32_t gpio_pin = 0;
 	int device_count;
 
-	while ((opt = getopt(argc, argv, "d:b:g:h?")) != -1) {
+	while ((opt = getopt(argc, argv, "d:N:b:g:h?")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'b':
 			bias_on = atoi(optarg);
@@ -74,7 +80,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -82,7 +88,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dev, dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	rtlsdr_set_bias_tee_gpio(dev, gpio_pin, bias_on);
 
 exit:

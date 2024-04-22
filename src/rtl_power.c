@@ -130,7 +130,8 @@ void usage(void)
 		"\t[-e exit_timer (default: off/0)]\n"
 		//"\t[-s avg/iir smoothing (default: avg)]\n"
 		//"\t[-t threads (default: 1)]\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-g tuner_gain (default: automatic)]\n"
 		"\t[-p ppm_error (default: 0)]\n"
 		"\t[-T enable bias-T on GPIO PIN 0 (works for rtl-sdr.com v3 dongles)]\n"
@@ -774,6 +775,7 @@ int main(int argc, char **argv)
 	int gain = AUTO_GAIN; // tenths of a dB
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	int ppm_error = 0;
 	int interval = 10;
 	int fft_threads = 1;
@@ -792,7 +794,7 @@ int main(int argc, char **argv)
 	double (*window_fn)(int, int) = rectangle;
 	freq_optarg = "";
 
-	while ((opt = getopt(argc, argv, "f:i:s:t:d:g:p:e:w:c:F:1PDOhT")) != -1) {
+	while ((opt = getopt(argc, argv, "f:i:s:t:d:N:g:p:e:w:c:F:1PDOhT")) != -1) {
 		switch (opt) {
 		case 'f': // lower:upper:bin_size
 			freq_optarg = strdup(optarg);
@@ -801,6 +803,10 @@ int main(int argc, char **argv)
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'g':
 			gain = (int)(atof(optarg) * 10);
@@ -896,7 +902,7 @@ int main(int argc, char **argv)
 
 	fprintf(stderr, "Reporting every %i seconds\n", interval);
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -904,7 +910,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	if (r < 0) {
 		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
 		exit(1);

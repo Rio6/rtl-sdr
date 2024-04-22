@@ -89,7 +89,8 @@ void usage(void)
 	fprintf(stderr,
 		"rtl_adsb, a simple ADS-B decoder\n\n"
 		"Use:\trtl_adsb [-R] [-g gain] [-p ppm] [output file]\n"
-		"\t[-d device_index (default: 0)]\n"
+		"\t[-d device_index (default: 1)]\n"
+		"\t[-N file_desc use file descriptor instead of libusb index\n"
 		"\t[-V verbove output (default: off)]\n"
 		"\t[-S show short frames (default: off)]\n"
 		"\t[-Q quality (0: no sanity checks, 0.5: half bit, 1: one bit (default), 2: two bits)]\n"
@@ -372,18 +373,23 @@ int main(int argc, char **argv)
 	int gain = AUTO_GAIN; /* tenths of a dB */
 	int dev_index = 0;
 	int dev_given = 0;
+	int fd_given = 0;
 	int ppm_error = 0;
 	int enable_biastee = 0;
 	pthread_cond_init(&ready, NULL);
 	pthread_mutex_init(&ready_m, NULL);
 	squares_precompute();
 
-	while ((opt = getopt(argc, argv, "d:g:p:e:Q:VST")) != -1)
+	while ((opt = getopt(argc, argv, "d:N:g:p:e:Q:VST")) != -1)
 	{
 		switch (opt) {
 		case 'd':
 			dev_index = verbose_device_search(optarg);
 			dev_given = 1;
+			break;
+		case 'N':
+			dev_index = atoi(optarg);
+			fd_given = 1;
 			break;
 		case 'g':
 			gain = (int)(atof(optarg) * 10);
@@ -420,7 +426,7 @@ int main(int argc, char **argv)
 
 	buffer = malloc(DEFAULT_BUF_LENGTH * sizeof(uint8_t));
 
-	if (!dev_given) {
+	if (!dev_given && !fd_given) {
 		dev_index = verbose_device_search("0");
 	}
 
@@ -428,7 +434,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	if (fd_given) {
+		r = rtlsdr_open_fd(&dev, dev_index);
+	} else {
+		r = rtlsdr_open(&dev, (uint32_t)dev_index);
+	}
+
 	if (r < 0) {
 		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
 		exit(1);
@@ -493,7 +504,7 @@ int main(int argc, char **argv)
 	else {
 		fprintf(stderr, "\nLibrary error %d, exiting...\n", r);}
 	rtlsdr_cancel_async(dev);
-	pthread_cancel(demod_thread);
+	pthread_kill(demod_thread, 0);
 	pthread_join(demod_thread, NULL);
 	pthread_cond_destroy(&ready);
 	pthread_mutex_destroy(&ready_m);

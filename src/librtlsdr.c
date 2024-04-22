@@ -125,6 +125,7 @@ struct rtlsdr_dev {
 
 void rtlsdr_set_gpio_bit(rtlsdr_dev_t *dev, uint8_t gpio, int val);
 static int rtlsdr_set_if_freq(rtlsdr_dev_t *dev, uint32_t freq);
+static int rtlsdr_init(rtlsdr_dev_t *dev);
 
 /* generic tuner interface functions, shall be moved to the tuner implementations */
 int e4000_init(void *dev) {
@@ -1451,7 +1452,6 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	libusb_device *device = NULL;
 	uint32_t device_count = 0;
 	struct libusb_device_descriptor dd;
-	uint8_t reg;
 	ssize_t cnt;
 
 	dev = malloc(sizeof(rtlsdr_dev_t));
@@ -1502,6 +1502,94 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	}
 
 	libusb_free_device_list(list, 1);
+
+	r = rtlsdr_init(dev);
+	if (r < 0) {
+		goto err;
+	}
+
+	*out_dev = dev;
+
+	return r;
+err:
+	if (dev) {
+		if (dev->devh)
+			libusb_close(dev->devh);
+
+		if (dev->ctx)
+			libusb_exit(dev->ctx);
+
+		free(dev);
+	}
+
+	return r;
+}
+
+int rtlsdr_open_fd(rtlsdr_dev_t **out_dev, intptr_t fd)
+{
+	int r;
+	rtlsdr_dev_t *dev = NULL;
+	libusb_device *device = NULL;
+	struct libusb_device_descriptor dd;
+
+	dev = malloc(sizeof(rtlsdr_dev_t));
+	if (NULL == dev)
+		return -ENOMEM;
+
+	memset(dev, 0, sizeof(rtlsdr_dev_t));
+	memcpy(dev->fir, fir_default, sizeof(fir_default));
+
+	libusb_set_option(NULL, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+	r = libusb_init(&dev->ctx);
+	if(r < 0){
+		free(dev);
+		return -1;
+	}
+
+	dev->dev_lost = 1;
+
+	r = libusb_wrap_sys_device(dev->ctx, fd, &dev->devh);
+	if (r < 0) {
+		fprintf(stderr, "usb_open error %d\n", r);
+		if(r == LIBUSB_ERROR_ACCESS)
+			fprintf(stderr, "Please fix the device permissions, e.g. "
+			"by installing the udev rules file rtl-sdr.rules\n");
+		goto err;
+	}
+
+	device = libusb_get_device(dev->devh);
+	libusb_get_device_descriptor(device, &dd);
+	if (!find_known_device(dd.idVendor, dd.idProduct)) {
+		fprintf(stderr, "Unrecognized device\n");
+		r = -1;
+		goto err;
+	}
+
+	r = rtlsdr_init(dev);
+	if (r < 0) {
+		goto err;
+	}
+
+	*out_dev = dev;
+
+	return r;
+err:
+	if (dev) {
+		if (dev->devh)
+			libusb_close(dev->devh);
+
+		if (dev->ctx)
+			libusb_exit(dev->ctx);
+
+		free(dev);
+	}
+
+	return r;
+}
+
+static int rtlsdr_init(rtlsdr_dev_t *dev) {
+	int r;
+	uint8_t reg;
 
 	if (libusb_kernel_driver_active(dev->devh, 0) == 1) {
 		dev->driver_active = 1;
@@ -1638,8 +1726,6 @@ found:
 		r = dev->tuner->init(dev);
 
 	rtlsdr_set_i2c_repeater(dev, 0);
-
-	*out_dev = dev;
 
 	return 0;
 err:
